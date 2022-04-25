@@ -57,10 +57,10 @@ use common_traits::InterestAccrual;
 use common_types::{Adjustment, Moment};
 use frame_support::traits::UnixTime;
 use scale_info::TypeInfo;
-use sp_arithmetic::traits::checked_pow;
+use sp_arithmetic::traits::{checked_pow, One};
 use sp_runtime::ArithmeticError;
 use sp_runtime::{
-	traits::{AtLeast32BitUnsigned, CheckedAdd, CheckedMul, CheckedSub},
+	traits::{AtLeast32BitUnsigned, CheckedAdd, CheckedSub},
 	DispatchError, FixedPointNumber, FixedPointOperand,
 };
 
@@ -118,18 +118,6 @@ pub mod pallet {
 			+ TypeInfo
 			+ FixedPointNumber<Inner = Self::Balance>;
 
-		/// A fixed-point number which represents
-		/// the normalized debt.
-		type NormalizedDebt: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ TypeInfo
-			+ FixedPointOperand
-			+ CheckedMul
-			+ From<Self::Balance>
-			+ Into<Self::Balance>;
-
 		type Time: UnixTime;
 	}
 
@@ -156,7 +144,7 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		pub fn get_current_debt(
 			interest_rate_per_sec: T::InterestRate,
-			normalized_debt: T::NormalizedDebt,
+			normalized_debt: T::Balance,
 		) -> Result<T::Balance, DispatchError> {
 			Rate::<T>::try_mutate(
 				interest_rate_per_sec,
@@ -175,8 +163,7 @@ pub mod pallet {
 						rate
 					} else {
 						*rate_details = Some(RateDetails {
-							accumulated_rate: T::InterestRate::saturating_from_rational(100, 100)
-								.into(),
+							accumulated_rate: One::one(),
 							last_updated: Self::now(),
 						});
 						rate_details.as_mut().expect("RateDetails now Some. qed.")
@@ -191,9 +178,9 @@ pub mod pallet {
 
 		pub fn do_adjust_normalized_debt(
 			interest_rate_per_sec: T::InterestRate,
-			normalized_debt: T::NormalizedDebt,
+			normalized_debt: T::Balance,
 			adjustment: Adjustment<T::Balance>,
-		) -> Result<T::NormalizedDebt, DispatchError> {
+		) -> Result<T::Balance, DispatchError> {
 			let rate =
 				Rate::<T>::try_get(interest_rate_per_sec).map_err(|_| Error::<T>::NoSuchRate)?;
 
@@ -212,15 +199,15 @@ pub mod pallet {
 				.and_then(|inv_rate| inv_rate.checked_mul_int(new_debt))
 				.ok_or(Error::<T>::DebtAdjustmentFailed)?;
 
-			Ok(new_normalized_debt.into())
+			Ok(new_normalized_debt)
 		}
 
 		/// Calculates the debt using debt = normalized_debt * accumulated_rate
 		fn calculate_debt(
-			normalized_debt: T::NormalizedDebt,
+			normalized_debt: T::Balance,
 			accumulated_rate: T::InterestRate,
 		) -> Option<T::Balance> {
-			accumulated_rate.checked_mul_int(normalized_debt.into())
+			accumulated_rate.checked_mul_int(normalized_debt)
 		}
 
 		fn calculate_accumulated_rate<Rate: FixedPointNumber>(
@@ -246,7 +233,7 @@ pub mod pallet {
 }
 
 impl<T: Config> InterestAccrual<T::InterestRate, T::Balance, Adjustment<T::Balance>> for Pallet<T> {
-	type NormalizedDebt = T::NormalizedDebt;
+	type NormalizedDebt = T::Balance;
 
 	fn current_debt(
 		interest_rate_per_sec: T::InterestRate,
