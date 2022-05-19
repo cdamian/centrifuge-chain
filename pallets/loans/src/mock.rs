@@ -311,7 +311,7 @@ impl pallet_loans::Config for MockRuntime {
 }
 
 // USD currencyId
-pub const USD: CurrencyId = CurrencyId::Usd;
+pub const USD: CurrencyId = CurrencyId::KUSD;
 
 // Test externalities builder
 //
